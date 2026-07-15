@@ -11,6 +11,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "lcd1602.h"
+#include "tm_stm32f4_mfrc522.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -91,8 +93,6 @@ void delay_us(uint16_t us) {
     __HAL_TIM_SET_COUNTER(&htim2, 0);
     while (__HAL_TIM_GET_COUNTER(&htim2) < us);
 }
-
-
 
 // Hàm Callback xử lý ngắt nhận UART (Tự động gọi khi có 1 byte truyền đến)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -187,32 +187,30 @@ void Process_UART_Command(char *input) {
         }
         HAL_UART_Transmit(&huart1, (uint8_t*)response, tx_len, 100);
     }
-    // ================= LỆNH DEBUG SERVO MỚI =================
-    else if (strcmp(cmd, "setservo") == 0) {
-        char *arg = strtok(NULL, " \t\r\n");
-        if (arg != NULL) {
-            int angle = atoi(arg);
-            if (angle >= 0 && angle <= 180) {
-                // Gọi hàm điều khiển và lấy giá trị CCR thực tế sau khi tính
-                Control_Servo((uint8_t)angle);
-                uint32_t current_ccr = __HAL_TIM_GET_COMPARE(&htim2, TIM_CHANNEL_1);
-
-                tx_len = sprintf(response, "\r\n[SERVO_DEBUG] Thuc thi lenh quay: %d do | Gia tri ghi vao CCR: %lu\r\n", angle, current_ccr);
-            } else {
-                tx_len = sprintf(response, "\r\n[SERVO_DEBUG] ERROR: Goc nhap vao phai tu 0 den 180!\r\n");
-            }
-        } else {
-            tx_len = sprintf(response, "\r\n[SERVO_DEBUG] ERROR: Thieu tham so goc. Cu phap: setservo <goc>\r\n");
-        }
-        HAL_UART_Transmit(&huart1, (uint8_t*)response, tx_len, 100);
-    }
     else {
-        tx_len = sprintf(response, "\r\n[SYSTEM] ERROR: Lenh '%s' khong duoc ho tro! Dung: add <Ma_The> hoac setservo <Goc>\r\n", cmd);
+        tx_len = sprintf(response, "\r\n[SYSTEM] ERROR: Lenh '%s' khong duoc ho tro! Dung: add <Ma_The>\r\n", cmd);
         HAL_UART_Transmit(&huart1, (uint8_t*)response, tx_len, 100);
     }
 }
 
+void Control_Servo(uint8_t angle) {
+    if (angle > 180) angle = 180;
 
+    // Ánh xạ góc từ 0 - 180 độ sang thời gian xung từ 500us đến 2500us
+    uint32_t pulse_us = 500 + ((angle * 2000) / 180);
+
+    // Ghi trực tiếp số microgiây vào Channel 1 của TIM2
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse_us);
+}
+
+void Buzzer_Beep(uint8_t count, uint16_t delay_ms) {
+    for (uint8_t i = 0; i < count; i++) {
+        HAL_GPIO_WritePin(GPIOB, BUZZER_Pin, GPIO_PIN_SET);
+        HAL_Delay(delay_ms);
+        HAL_GPIO_WritePin(GPIOB, BUZZER_Pin, GPIO_PIN_RESET);
+        if (count > 1) HAL_Delay(delay_ms);
+    }
+}
 
 void UID_To_String(uint8_t *uid, char *out_str) {
     sprintf(out_str, "%02X%02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3], uid[4]);
@@ -434,10 +432,8 @@ int main(void)
 				if (HAL_GetTick() - last_print_time >= 1500) {
 					last_print_time = HAL_GetTick();
 
-					uint32_t active_ccr = __HAL_TIM_GET_COMPARE(&htim2, TIM_CHANNEL_1);
-
-					tx_len = sprintf(tx_buf, "DEBUG -> S2: %02lucm | S3: %02lucm | Occupied: %d/2 | Cards: %d | Servo_CCR: %lu\r\n",
-									 distance2, distance3, occupied_slots, current_card_count, active_ccr);
+					tx_len = sprintf(tx_buf, "DEBUG -> S2: %02lucm | S3: %02lucm | Occupied: %d/2 | Cards: %d\r\n",
+									 distance2, distance3, occupied_slots, current_card_count);
 					HAL_UART_Transmit(&huart1, (uint8_t*)tx_buf, tx_len, 100);
 
 					LCD_GotoXY(1, 0);
