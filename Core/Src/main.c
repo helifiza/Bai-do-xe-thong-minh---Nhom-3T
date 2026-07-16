@@ -94,6 +94,67 @@ void delay_us(uint16_t us) {
     while (__HAL_TIM_GET_COUNTER(&htim2) < us);
 }
 
+// Kích xung Trigger riêng biệt cho cảm biến 2
+void Trigger_Sensor2(void) {
+    HAL_GPIO_WritePin(GPIOE, TRIG2_Pin, GPIO_PIN_RESET);
+    delay_us(2);
+    HAL_GPIO_WritePin(GPIOE, TRIG2_Pin, GPIO_PIN_SET);
+    delay_us(12);
+    HAL_GPIO_WritePin(GPIOE, TRIG2_Pin, GPIO_PIN_RESET);
+}
+
+// Kích xung Trigger riêng biệt cho cảm biến 3 (PE13)
+void Trigger_Sensor3(void) {
+    HAL_GPIO_WritePin(GPIOE, TRIG3_Pin, GPIO_PIN_RESET);
+    delay_us(2);
+    HAL_GPIO_WritePin(GPIOE, TRIG3_Pin, GPIO_PIN_SET);
+    delay_us(12);
+    HAL_GPIO_WritePin(GPIOE, TRIG3_Pin, GPIO_PIN_RESET);
+}
+
+// Hàm Callback xử lý ngắt ngoài EXTI chung cho các chân Echo
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    uint32_t current_time = __HAL_TIM_GET_COUNTER(&htim2);
+    uint32_t pulse_width = 0;
+    uint32_t calculated_distance = 0;
+
+    // Xử lý Echo cho cảm biến Slot 2
+    if (GPIO_Pin == ECHO2_Pin) {
+        if (HAL_GPIO_ReadPin(GPIOE, ECHO2_Pin) == GPIO_PIN_SET) {
+            echo2_start_time = current_time;
+        } else {
+            echo2_end_time = current_time;
+            if (echo2_end_time > echo2_start_time) {
+                pulse_width = echo2_end_time - echo2_start_time;
+            } else {
+                pulse_width = (0xFFFFFFFF - echo2_start_time) + echo2_end_time;
+            }
+            calculated_distance = (pulse_width * 0.0343) / 2;
+            if (calculated_distance > 2 && calculated_distance < 400) {
+                distance2 = calculated_distance;
+            }
+        }
+    }
+
+    // Xử lý Echo cho cảm biến Slot 3 (PE14)
+    if (GPIO_Pin == ECHO3_Pin) {
+        if (HAL_GPIO_ReadPin(GPIOE, ECHO3_Pin) == GPIO_PIN_SET) {
+            echo3_start_time = current_time;
+        } else {
+            echo3_end_time = current_time;
+            if (echo3_end_time > echo3_start_time) {
+                pulse_width = echo3_end_time - echo3_start_time;
+            } else {
+                pulse_width = (0xFFFFFFFF - echo3_start_time) + echo3_end_time;
+            }
+            calculated_distance = (pulse_width * 0.0343) / 2;
+            if (calculated_distance > 2 && calculated_distance < 400) {
+                distance3 = calculated_distance;
+            }
+        }
+    }
+}
+
 // Hàm Callback xử lý ngắt nhận UART (Tự động gọi khi có 1 byte truyền đến)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART1) {
